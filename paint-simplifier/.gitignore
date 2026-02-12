@@ -1,0 +1,7 @@
+uploads/
+outputs/
+venv/
+__pycache__/
+*.pyc
+.env
+.railway/

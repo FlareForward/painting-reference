@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paint Simplifier</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="controls">
+      <h1>Paint Simplifier</h1>
+      <p class="subtitle">Block-in &amp; value study tool</p>
+
+      <section class="control-group">
+        <label for="upload-btn" class="upload-label">
+          <span id="upload-text">Upload Image</span>
+          <input type="file" id="upload-btn" accept="image/*" hidden>
+        </label>
+        <div id="upload-info" class="upload-info"></div>
+      </section>
+
+      <section class="control-group">
+        <label>Mode</label>
+        <div class="radio-group">
+          <label class="radio-label"><input type="radio" name="app-mode" value="simplify" checked> Simplify</label>
+          <label class="radio-label"><input type="radio" name="app-mode" value="guide"> Guide</label>
+        </div>
+      </section>
+
+      <section class="control-group">
+        <label>Values <span class="value-display" id="values-display">4</span></label>
+        <input type="range" id="values-slider" min="2" max="10" value="4" step="1">
+        <div class="range-labels"><span>2</span><span>10</span></div>
+      </section>
+
+      <section class="control-group">
+        <label>Shape Build Level <span class="value-display" id="level-display">3</span></label>
+        <input type="range" id="level-slider" min="1" max="5" value="3" step="1">
+        <div class="level-labels">
+          <span>Notan</span>
+          <span>Primary</span>
+          <span>Secondary</span>
+          <span>Structure</span>
+          <span>Full</span>
+        </div>
+      </section>
+
+      <section class="control-group">
+        <label>Color Mode</label>
+        <div class="radio-group">
+          <label class="radio-label"><input type="radio" name="color-mode" value="bw" checked> B/W</label>
+          <label class="radio-label"><input type="radio" name="color-mode" value="grayscale"> Grayscale</label>
+          <label class="radio-label"><input type="radio" name="color-mode" value="color"> Color</label>
+        </div>
+      </section>
+
+      <section id="color-strategy-section" class="control-group" style="display:none;">
+        <label>Color Strategy</label>
+        <div class="radio-group">
+          <label class="radio-label"><input type="radio" name="color-strategy" value="painter" checked> Painter</label>
+          <label class="radio-label"><input type="radio" name="color-strategy" value="graphic"> Graphic</label>
+        </div>
+        <label class="checkbox-label">
+          <input type="checkbox" id="exaggerate-color"> Exaggerate color separation
+        </label>
+      </section>
+
+      <section class="control-group">
+        <label>Edge Strength <span class="value-display" id="edge-display">70</span></label>
+        <input type="range" id="edge-slider" min="0" max="100" value="70" step="1">
+        <div class="range-labels"><span>Soft</span><span>Graphic</span></div>
+      </section>
+
+      <section id="guide-section" class="control-group guide-overlays" style="display:none;">
+        <label>Guide Overlays</label>
+        <label class="checkbox-label"><input type="checkbox" id="overlay-edges"> Show edge map</label>
+        <label class="checkbox-label"><input type="checkbox" id="overlay-shapes"> Show major shapes</label>
+        <label class="checkbox-label"><input type="checkbox" id="overlay-focal"> Show focal hint</label>
+      </section>
+
+      <button id="export-btn" class="export-btn" disabled>Export PNG</button>
+    </aside>
+
+    <main class="preview-area">
+      <div id="preview-container" class="preview-container">
+        <div id="placeholder" class="placeholder">
+          <p>Upload an image to begin</p>
+        </div>
+        <div id="preview-wrapper" class="preview-wrapper" style="display:none;">
+          <div class="image-panel">
+            <span class="panel-label" id="result-label">Result</span>
+            <img id="result-preview" alt="Processed result">
+          </div>
+        </div>
+        <div id="loading-spinner" class="spinner" style="display:none;">
+          <div class="spinner-ring"></div>
+          <span>Processing...</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
