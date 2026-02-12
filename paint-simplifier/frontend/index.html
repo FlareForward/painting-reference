@@ -20,6 +20,26 @@
         <div id="upload-info" class="upload-info"></div>
       </section>
 
+      <section class="control-group style-mode-group">
+        <label>Style Mode</label>
+        <div class="style-toggle">
+          <label class="style-option">
+            <input type="radio" name="style-mode" value="painter" checked>
+            <span class="style-option-content">
+              <span class="style-name">Painter</span>
+              <span class="style-desc">natural paint grouping & soft hierarchy</span>
+            </span>
+          </label>
+          <label class="style-option">
+            <input type="radio" name="style-mode" value="graphic">
+            <span class="style-option-content">
+              <span class="style-name">Graphic</span>
+              <span class="style-desc">bold shapes & strong separation</span>
+            </span>
+          </label>
+        </div>
+      </section>
+
       <section class="control-group">
         <label>Mode</label>
         <div class="radio-group">
@@ -35,11 +55,10 @@
       </section>
 
       <section class="control-group">
-        <label>Shape Build Level <span class="value-display" id="level-display">3</span></label>
-        <input type="range" id="level-slider" min="1" max="5" value="3" step="1">
+        <label>Shape Build Level <span class="value-display" id="level-display">2</span></label>
+        <input type="range" id="level-slider" min="1" max="4" value="2" step="1">
         <div class="level-labels">
-          <span>Notan</span>
-          <span>Primary</span>
+          <span>Block</span>
           <span>Secondary</span>
           <span>Structure</span>
           <span>Full</span>
@@ -47,23 +66,15 @@
       </section>
 
       <section class="control-group">
-        <label>Color Mode</label>
-        <div class="radio-group">
-          <label class="radio-label"><input type="radio" name="color-mode" value="bw" checked> B/W</label>
-          <label class="radio-label"><input type="radio" name="color-mode" value="grayscale"> Grayscale</label>
-          <label class="radio-label"><input type="radio" name="color-mode" value="color"> Color</label>
-        </div>
+        <label class="checkbox-label"><input type="checkbox" id="preserve-subject"> Preserve dominant subject</label>
       </section>
 
-      <section id="color-strategy-section" class="control-group" style="display:none;">
-        <label>Color Strategy</label>
+      <section class="control-group">
+        <label>Color Mode</label>
         <div class="radio-group">
-          <label class="radio-label"><input type="radio" name="color-strategy" value="painter" checked> Painter</label>
-          <label class="radio-label"><input type="radio" name="color-strategy" value="graphic"> Graphic</label>
+          <label class="radio-label"><input type="radio" name="color-mode" value="grayscale" checked> Grayscale</label>
+          <label class="radio-label"><input type="radio" name="color-mode" value="color"> Color</label>
         </div>
-        <label class="checkbox-label">
-          <input type="checkbox" id="exaggerate-color"> Exaggerate color separation
-        </label>
       </section>
 
       <section class="control-group">
@@ -80,6 +91,10 @@
       </section>
 
       <button id="export-btn" class="export-btn" disabled>Export PNG</button>
+
+      <div id="ai-section" class="ai-section" style="display:none;">
+        <button id="ai-btn" class="ai-btn" disabled>AI Assist</button>
+      </div>
     </aside>
 
     <main class="preview-area">
@@ -101,9 +116,10 @@
                 <span class="step-num">2</span>
                 <div>
                   <strong>Dial in your study</strong>
-                  <p><b>Values</b> &mdash; how many value steps (2 = poster, 10 = detailed).<br>
-                     <b>Shape Build Level</b> &mdash; from Notan masses to full shapes.<br>
-                     <b>Color Mode</b> &mdash; B/W, Grayscale, or Color with Painter/Graphic strategy.<br>
+                  <p><b>Style Mode</b> &mdash; Painter for soft paint masses, Graphic for bold flat shapes.<br>
+                     <b>Values</b> &mdash; how many value steps (2 = notan, 10 = detailed).<br>
+                     <b>Shape Build Level</b> &mdash; from bold block-in to full shapes.<br>
+                     <b>Color Mode</b> &mdash; Grayscale for value planning, Color for color masses.<br>
                      <b>Edge Strength</b> &mdash; soft painterly to hard graphic edges.</p>
                 </div>
               </div>
@@ -127,10 +143,26 @@
           </div>
         </div>
         <div id="preview-wrapper" class="preview-wrapper" style="display:none;">
-          <div class="canvas-card">
-            <div class="image-panel">
-              <span class="panel-label" id="result-label">Result</span>
-              <img id="result-preview" alt="Processed result">
+          <div class="preview-content">
+            <div class="canvas-card">
+              <div class="view-toggle">
+                <button id="view-result-btn" class="view-btn active">Result</button>
+                <button id="view-original-btn" class="view-btn">Original</button>
+              </div>
+              <div class="image-panel">
+                <span class="panel-label" id="result-label">Result</span>
+                <img id="result-preview" alt="Processed result">
+                <img id="original-preview" alt="Original photo" style="display:none;">
+              </div>
+            </div>
+            <div id="ai-results" class="ai-results" style="display:none;">
+              <div class="ai-results-grid">
+                <div class="ai-result-item"><h4>Focal Point</h4><p id="ai-focal"></p></div>
+                <div class="ai-result-item"><h4>Values</h4><p id="ai-values"></p></div>
+                <div class="ai-result-item"><h4>Edges</h4><p id="ai-edges"></p></div>
+                <div class="ai-result-item"><h4>Simplification</h4><p id="ai-simplification"></p></div>
+                <div class="ai-result-item"><h4>Color</h4><p id="ai-color"></p></div>
+              </div>
             </div>
           </div>
         </div>

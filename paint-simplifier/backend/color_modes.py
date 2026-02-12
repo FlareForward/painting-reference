@@ -1,19 +1,23 @@
-"""Rendering modes: B/W, Grayscale, Color (with Painter/Graphic strategy).
+"""Rendering modes: Grayscale and Color (with Painter/Graphic style).
 
 edge_strength: int 0..100 where 0=maximum soft, 100=maximum graphic.
-color_strategy: 'painter' (alive, warm/cool preserved) or 'graphic' (flat median).
-exaggeration: bool - slightly push color separation for painter mode.
+sigma_scale: float — controls edge softness per style mode.
+style_mode: 'painter' (alive, warm/cool preserved) or 'graphic' (flat median).
+
+Quantization fix: after edge blur, pixels are snapped back to the
+exact palette so N values always produces exactly N tones.
 """
 
 import cv2
 import numpy as np
 
 
-def _apply_edge(img_gray: np.ndarray, edge_strength: int) -> np.ndarray:
+def _apply_edge(img_gray: np.ndarray, edge_strength: int,
+                sigma_scale: float = 3.0) -> np.ndarray:
     """0 = full soft, 100 = full graphic."""
     if edge_strength >= 95:
         return img_gray
-    sigma = 3.0 * (1.0 - edge_strength / 100.0)
+    sigma = sigma_scale * (1.0 - edge_strength / 100.0)
     if sigma < 0.3:
         return img_gray
     ksize = int(sigma * 4) | 1
@@ -21,10 +25,11 @@ def _apply_edge(img_gray: np.ndarray, edge_strength: int) -> np.ndarray:
     return cv2.GaussianBlur(img_gray, (ksize, ksize), sigmaX=sigma)
 
 
-def _apply_edge_bgr(img_bgr: np.ndarray, edge_strength: int) -> np.ndarray:
+def _apply_edge_bgr(img_bgr: np.ndarray, edge_strength: int,
+                    sigma_scale: float = 3.0) -> np.ndarray:
     if edge_strength >= 95:
         return img_bgr
-    sigma = 3.0 * (1.0 - edge_strength / 100.0)
+    sigma = sigma_scale * (1.0 - edge_strength / 100.0)
     if sigma < 0.3:
         return img_bgr
     ksize = int(sigma * 4) | 1
@@ -32,26 +37,49 @@ def _apply_edge_bgr(img_bgr: np.ndarray, edge_strength: int) -> np.ndarray:
     return cv2.GaussianBlur(img_bgr, (ksize, ksize), sigmaX=sigma)
 
 
-def render_bw(labels: np.ndarray, num_values: int, edge_strength: int) -> np.ndarray:
-    """Flat B/W value steps."""
-    if num_values == 1:
-        steps = np.array([128], dtype=np.uint8)
-    else:
-        steps = np.linspace(0, 255, num_values).astype(np.uint8)
-    out = steps[labels]
-    out = _apply_edge(out, edge_strength)
-    return cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
+def _snap_gray(out: np.ndarray, steps: np.ndarray) -> np.ndarray:
+    """Snap each pixel to the nearest palette value (locks to N tones)."""
+    diffs = np.abs(
+        out.astype(np.int16)[:, :, np.newaxis]
+        - steps.astype(np.int16)[np.newaxis, np.newaxis, :]
+    )
+    return steps[np.argmin(diffs, axis=2)]
 
 
-def render_grayscale(labels: np.ndarray, num_values: int, edge_strength: int) -> np.ndarray:
-    """Slightly smoother mapping at boundaries."""
+def _snap_bgr(blurred: np.ndarray, flat: np.ndarray) -> np.ndarray:
+    """Snap blurred BGR pixels back to nearest color from the flat palette."""
+    h, w = blurred.shape[:2]
+    flat_2d = flat.reshape(-1, 3)
+    palette = np.unique(flat_2d, axis=0).astype(np.int16)
+
+    out_2d = blurred.reshape(-1, 3).astype(np.int16)
+    result = np.empty((h * w, 3), dtype=np.uint8)
+
+    batch = 100000
+    for start in range(0, len(out_2d), batch):
+        end = min(start + batch, len(out_2d))
+        chunk = out_2d[start:end]
+        dists = np.sum(
+            (chunk[:, np.newaxis, :] - palette[np.newaxis, :, :]) ** 2,
+            axis=2,
+        )
+        nearest = np.argmin(dists, axis=1)
+        result[start:end] = palette[nearest].astype(np.uint8)
+
+    return result.reshape(h, w, 3)
+
+
+def render_grayscale(labels: np.ndarray, num_values: int, edge_strength: int,
+                     sigma_scale: float = 3.0) -> np.ndarray:
+    """Grayscale value steps, locked to exactly num_values tones."""
     if num_values == 1:
         steps = np.array([128], dtype=np.uint8)
     else:
         steps = np.linspace(0, 255, num_values).astype(np.uint8)
     out = steps[labels]
     adjusted = max(0, edge_strength - 10)
-    out = _apply_edge(out, adjusted)
+    out = _apply_edge(out, adjusted, sigma_scale)
+    out = _snap_gray(out, steps)
     return cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
 
 
@@ -164,12 +192,15 @@ def _render_color_painter(labels: np.ndarray, num_values: int,
 
 def render_color_snap(labels: np.ndarray, num_values: int,
                       original_bgr: np.ndarray, edge_strength: int,
-                      color_strategy: str = "painter",
+                      style_mode: str = "painter",
+                      sigma_scale: float = 3.0,
                       exaggerate: bool = False) -> np.ndarray:
-    """Color rendering with strategy selection."""
-    if color_strategy == "graphic":
-        out = _render_color_graphic(labels, num_values, original_bgr)
+    """Color rendering with style mode selection. Snaps to palette after blur."""
+    if style_mode == "graphic":
+        flat = _render_color_graphic(labels, num_values, original_bgr)
     else:
-        out = _render_color_painter(labels, num_values, original_bgr, exaggerate)
+        flat = _render_color_painter(labels, num_values, original_bgr, exaggerate)
 
-    return _apply_edge_bgr(out, edge_strength)
+    out = _apply_edge_bgr(flat, edge_strength, sigma_scale)
+    out = _snap_bgr(out, flat)
+    return out
