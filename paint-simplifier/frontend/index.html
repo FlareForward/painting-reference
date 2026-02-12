@@ -8,7 +8,9 @@
 </head>
 <body>
   <div class="app">
-    <aside class="controls">
+
+    <!-- LEFT SIDEBAR: upload + presets -->
+    <aside class="sidebar sidebar-left">
       <h1>Paint Simplifier</h1>
       <p class="subtitle">Block-in &amp; value study tool</p>
 
@@ -20,23 +22,10 @@
         <div id="upload-info" class="upload-info"></div>
       </section>
 
-      <section class="control-group style-mode-group">
-        <label>Style Mode</label>
-        <div class="style-toggle">
-          <label class="style-option">
-            <input type="radio" name="style-mode" value="painter" checked>
-            <span class="style-option-content">
-              <span class="style-name">Painter</span>
-              <span class="style-desc">natural paint grouping & soft hierarchy</span>
-            </span>
-          </label>
-          <label class="style-option">
-            <input type="radio" name="style-mode" value="graphic">
-            <span class="style-option-content">
-              <span class="style-name">Graphic</span>
-              <span class="style-desc">bold shapes & strong separation</span>
-            </span>
-          </label>
+      <section class="control-group preset-group">
+        <label>Painter Preset</label>
+        <div id="preset-selector" class="preset-selector">
+          <!-- Populated dynamically from /api/presets -->
         </div>
       </section>
 
@@ -47,6 +36,91 @@
           <label class="radio-label"><input type="radio" name="app-mode" value="guide"> Guide</label>
         </div>
       </section>
+
+      <section id="guide-section" class="control-group guide-overlays" style="display:none;">
+        <label>Guide Overlays</label>
+        <label class="checkbox-label"><input type="checkbox" id="overlay-edges"> Show edge map</label>
+        <label class="checkbox-label"><input type="checkbox" id="overlay-shapes"> Show major shapes</label>
+        <label class="checkbox-label"><input type="checkbox" id="overlay-focal"> Show focal hint</label>
+      </section>
+    </aside>
+
+    <!-- PREVIEW -->
+    <main class="preview-area">
+      <div id="preview-container" class="preview-container">
+        <div id="placeholder" class="placeholder">
+          <div class="guide">
+            <h2>Paint Simplifier</h2>
+            <p class="guide-tagline">Turn any photo into a paintable block-in study.</p>
+
+            <div class="guide-steps">
+              <div class="guide-step">
+                <span class="step-num">1</span>
+                <div>
+                  <strong>Upload a photo</strong>
+                  <p>Any reference image &mdash; landscape, portrait, still life.</p>
+                </div>
+              </div>
+              <div class="guide-step">
+                <span class="step-num">2</span>
+                <div>
+                  <strong>Pick a painter preset</strong>
+                  <p><b>Sargent</b> &mdash; bold value masses, confident block-in.<br>
+                     <b>Impressionist</b> &mdash; broken color, atmosphere, temperature shifts.<br>
+                     <b>Graphic Poster</b> &mdash; flat shapes, hard edges, strong silhouette.</p>
+                </div>
+              </div>
+              <div class="guide-step">
+                <span class="step-num">3</span>
+                <div>
+                  <strong>Dial in your study</strong>
+                  <p><b>Values</b> &mdash; how many value steps (2 = notan, 10 = detailed).<br>
+                     <b>Shape Build Level</b> &mdash; from bold block-in to full shapes.<br>
+                     <b>Color Mode</b> &mdash; Grayscale for value planning, Color for color masses.<br>
+                     <b>Edge Strength</b> &mdash; soft painterly to hard graphic edges.</p>
+                </div>
+              </div>
+              <div class="guide-step">
+                <span class="step-num">4</span>
+                <div>
+                  <strong>Export &amp; paint</strong>
+                  <p>Download a full-res PNG to use as your painting reference.</p>
+                </div>
+              </div>
+            </div>
+
+            <p class="guide-cta">Upload an image to begin</p>
+          </div>
+        </div>
+        <div id="preview-wrapper" class="preview-wrapper" style="display:none;">
+          <div class="preview-content">
+            <div class="canvas-card">
+              <div class="image-panel">
+                <span class="panel-label" id="result-label">Result</span>
+                <img id="result-preview" alt="Processed result">
+                <img id="original-preview" alt="Original photo" style="display:none;">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="loading-spinner" class="spinner" style="display:none;">
+          <div class="spinner-ring"></div>
+          <span>Processing...</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT SIDEBAR: view toggle + sliders + export -->
+    <aside class="sidebar sidebar-right">
+      <div class="sidebar-header">
+        <label class="sidebar-heading">Adjustments</label>
+        <p class="sidebar-hint">Sliders override preset defaults</p>
+      </div>
+
+      <div class="view-toggle sidebar-view-toggle">
+        <button id="view-result-btn" class="view-btn active">Result</button>
+        <button id="view-original-btn" class="view-btn">Original</button>
+      </div>
 
       <section class="control-group">
         <label>Values <span class="value-display" id="values-display">4</span></label>
@@ -83,95 +157,9 @@
         <div class="range-labels"><span>Soft</span><span>Graphic</span></div>
       </section>
 
-      <section id="guide-section" class="control-group guide-overlays" style="display:none;">
-        <label>Guide Overlays</label>
-        <label class="checkbox-label"><input type="checkbox" id="overlay-edges"> Show edge map</label>
-        <label class="checkbox-label"><input type="checkbox" id="overlay-shapes"> Show major shapes</label>
-        <label class="checkbox-label"><input type="checkbox" id="overlay-focal"> Show focal hint</label>
-      </section>
-
       <button id="export-btn" class="export-btn" disabled>Export PNG</button>
-
-      <div id="ai-section" class="ai-section" style="display:none;">
-        <button id="ai-btn" class="ai-btn" disabled>AI Assist</button>
-      </div>
     </aside>
 
-    <main class="preview-area">
-      <div id="preview-container" class="preview-container">
-        <div id="placeholder" class="placeholder">
-          <div class="guide">
-            <h2>Paint Simplifier</h2>
-            <p class="guide-tagline">Turn any photo into a paintable block-in study.</p>
-
-            <div class="guide-steps">
-              <div class="guide-step">
-                <span class="step-num">1</span>
-                <div>
-                  <strong>Upload a photo</strong>
-                  <p>Any reference image &mdash; landscape, portrait, still life.</p>
-                </div>
-              </div>
-              <div class="guide-step">
-                <span class="step-num">2</span>
-                <div>
-                  <strong>Dial in your study</strong>
-                  <p><b>Style Mode</b> &mdash; Painter for soft paint masses, Graphic for bold flat shapes.<br>
-                     <b>Values</b> &mdash; how many value steps (2 = notan, 10 = detailed).<br>
-                     <b>Shape Build Level</b> &mdash; from bold block-in to full shapes.<br>
-                     <b>Color Mode</b> &mdash; Grayscale for value planning, Color for color masses.<br>
-                     <b>Edge Strength</b> &mdash; soft painterly to hard graphic edges.</p>
-                </div>
-              </div>
-              <div class="guide-step">
-                <span class="step-num">3</span>
-                <div>
-                  <strong>Use Guide mode</strong>
-                  <p>Switch to Guide for edge hierarchy, major shapes, and focal hints overlaid on your study.</p>
-                </div>
-              </div>
-              <div class="guide-step">
-                <span class="step-num">4</span>
-                <div>
-                  <strong>Export &amp; paint</strong>
-                  <p>Download a full-res PNG to use as your painting reference.</p>
-                </div>
-              </div>
-            </div>
-
-            <p class="guide-cta">Upload an image to begin</p>
-          </div>
-        </div>
-        <div id="preview-wrapper" class="preview-wrapper" style="display:none;">
-          <div class="preview-content">
-            <div class="canvas-card">
-              <div class="view-toggle">
-                <button id="view-result-btn" class="view-btn active">Result</button>
-                <button id="view-original-btn" class="view-btn">Original</button>
-              </div>
-              <div class="image-panel">
-                <span class="panel-label" id="result-label">Result</span>
-                <img id="result-preview" alt="Processed result">
-                <img id="original-preview" alt="Original photo" style="display:none;">
-              </div>
-            </div>
-            <div id="ai-results" class="ai-results" style="display:none;">
-              <div class="ai-results-grid">
-                <div class="ai-result-item"><h4>Focal Point</h4><p id="ai-focal"></p></div>
-                <div class="ai-result-item"><h4>Values</h4><p id="ai-values"></p></div>
-                <div class="ai-result-item"><h4>Edges</h4><p id="ai-edges"></p></div>
-                <div class="ai-result-item"><h4>Simplification</h4><p id="ai-simplification"></p></div>
-                <div class="ai-result-item"><h4>Color</h4><p id="ai-color"></p></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div id="loading-spinner" class="spinner" style="display:none;">
-          <div class="spinner-ring"></div>
-          <span>Processing...</span>
-        </div>
-      </div>
-    </main>
   </div>
 
   <script src="app.js"></script>

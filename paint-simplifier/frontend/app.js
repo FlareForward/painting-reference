@@ -7,10 +7,15 @@
 
   var LEVEL_NAMES = {1: "Block", 2: "Secondary", 3: "Structure", 4: "Full"};
 
+  // Preset state
+  var presets = [];         // loaded from /api/presets
+  var currentPreset = null; // { key, name, description, defaults }
+
   // DOM refs
   var uploadBtn = document.getElementById("upload-btn");
   var uploadText = document.getElementById("upload-text");
   var uploadInfo = document.getElementById("upload-info");
+  var presetSelector = document.getElementById("preset-selector");
   var valuesSlider = document.getElementById("values-slider");
   var valuesDisplay = document.getElementById("values-display");
   var levelSlider = document.getElementById("level-slider");
@@ -33,11 +38,8 @@
   var spinner = document.getElementById("loading-spinner");
   var originalUrl = null;
 
-  // AI Assist refs (local-only)
-  var aiSection = document.getElementById("ai-section");
-  var aiBtn = document.getElementById("ai-btn");
-  var aiResults = document.getElementById("ai-results");
-  var isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  // Track whether user has manually changed sliders (overrides)
+  var userOverrides = {};
 
   function getAppMode() {
     return document.querySelector('input[name="app-mode"]:checked').value;
@@ -45,10 +47,6 @@
 
   function getColorMode() {
     return document.querySelector('input[name="color-mode"]:checked').value;
-  }
-
-  function getStyleMode() {
-    return document.querySelector('input[name="style-mode"]:checked').value;
   }
 
   function isGuideMode() {
@@ -62,7 +60,7 @@
       build_level: parseInt(levelSlider.value, 10),
       mode: getColorMode(),
       edge_strength: parseInt(edgeSlider.value, 10),
-      style_mode: getStyleMode(),
+      preset: currentPreset ? currentPreset.key : "sargent",
       preserve_subject: preserveSubject.checked,
       guide_mode: isGuideMode(),
       overlays: {
@@ -71,6 +69,105 @@
         focal: isGuideMode() && overlayFocal.checked,
       },
     };
+  }
+
+  // --- Preset system ---
+
+  function loadPresets() {
+    fetch("/api/presets")
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        presets = data;
+        buildPresetUI();
+        // Select first preset by default
+        if (presets.length > 0) {
+          selectPreset(presets[0].key, true);
+        }
+      })
+      .catch(function (e) {
+        console.error("Failed to load presets:", e);
+        // Fallback: build a minimal sargent preset
+        presets = [{
+          key: "sargent", name: "Sargent",
+          description: "Confident oil-paint block-in",
+          defaults: { values: 4, build_level: 2, edge_strength: 40, color_mode: "grayscale" }
+        }];
+        buildPresetUI();
+        selectPreset("sargent", true);
+      });
+  }
+
+  function buildPresetUI() {
+    presetSelector.innerHTML = "";
+    presets.forEach(function (p) {
+      var label = document.createElement("label");
+      label.className = "preset-option";
+      label.innerHTML =
+        '<input type="radio" name="preset" value="' + p.key + '">' +
+        '<span class="preset-option-content">' +
+          '<span class="preset-name">' + p.name + '</span>' +
+          '<span class="preset-desc">' + p.description + '</span>' +
+        '</span>';
+      presetSelector.appendChild(label);
+
+      label.querySelector("input").addEventListener("change", function () {
+        selectPreset(p.key, false);
+      });
+    });
+  }
+
+  function selectPreset(key, isInit) {
+    currentPreset = null;
+    for (var i = 0; i < presets.length; i++) {
+      if (presets[i].key === key) {
+        currentPreset = presets[i];
+        break;
+      }
+    }
+    if (!currentPreset) return;
+
+    // Check the radio button
+    var radio = presetSelector.querySelector('input[value="' + key + '"]');
+    if (radio) radio.checked = true;
+
+    // Apply preset defaults to sliders (reset overrides on preset change)
+    // Preserve color mode — user's color/grayscale choice persists across presets
+    if (!isInit) {
+      var keepColorMode = userOverrides.color_mode;
+      userOverrides = {};
+      if (keepColorMode) userOverrides.color_mode = true;
+    }
+    applyPresetDefaults(currentPreset.defaults);
+
+    if (imageId) {
+      requestPreview();
+    }
+  }
+
+  function applyPresetDefaults(defaults) {
+    // Values slider
+    if (!userOverrides.values) {
+      valuesSlider.value = defaults.values;
+      valuesDisplay.textContent = defaults.values;
+    }
+
+    // Build level slider
+    if (!userOverrides.build_level) {
+      levelSlider.value = defaults.build_level;
+      levelDisplay.textContent = defaults.build_level;
+    }
+
+    // Edge strength slider
+    if (!userOverrides.edge_strength) {
+      edgeSlider.value = defaults.edge_strength;
+      edgeDisplay.textContent = defaults.edge_strength;
+    }
+
+    // Color mode radio
+    if (!userOverrides.color_mode) {
+      var colorRadio = document.querySelector('input[name="color-mode"][value="' + defaults.color_mode + '"]');
+      if (colorRadio) colorRadio.checked = true;
+    }
   }
 
   // --- Upload ---
@@ -97,7 +194,6 @@
         uploadText.textContent = "Change Image";
         uploadInfo.textContent = file.name + " (" + data.width + "\u00d7" + data.height + ")";
         exportBtn.disabled = false;
-        if (isLocalhost && aiBtn) aiBtn.disabled = false;
         placeholder.style.display = "none";
         previewWrapper.style.display = "flex";
         originalPreview.src = originalUrl;
@@ -146,8 +242,8 @@
     var params = getParams();
     var level = params.build_level;
     var modeName = params.mode.charAt(0).toUpperCase() + params.mode.slice(1);
-    var styleName = getStyleMode().charAt(0).toUpperCase() + getStyleMode().slice(1);
-    var modeStr = styleName + " / " + (isGuideMode() ? "Guide" : "Simplify") + " / " + modeName + " / L" + level + " " + LEVEL_NAMES[level];
+    var presetName = currentPreset ? currentPreset.name : "Sargent";
+    var modeStr = presetName + " / " + (isGuideMode() ? "Guide" : "Simplify") + " / " + modeName + " / L" + level + " " + LEVEL_NAMES[level];
 
     fetch("/api/preview", {
       method: "POST",
@@ -174,31 +270,32 @@
       });
   }
 
-  // --- Controls ---
+  // --- Controls (sliders mark user overrides) ---
 
   valuesSlider.addEventListener("input", function () {
     valuesDisplay.textContent = this.value;
+    userOverrides.values = true;
     requestPreview();
   });
 
   levelSlider.addEventListener("input", function () {
     levelDisplay.textContent = this.value;
+    userOverrides.build_level = true;
     requestPreview();
   });
 
   edgeSlider.addEventListener("input", function () {
     edgeDisplay.textContent = this.value;
+    userOverrides.edge_strength = true;
     requestPreview();
   });
 
   // Color mode toggle
   document.querySelectorAll('input[name="color-mode"]').forEach(function (r) {
-    r.addEventListener("change", requestPreview);
-  });
-
-  // Style mode toggle
-  document.querySelectorAll('input[name="style-mode"]').forEach(function (r) {
-    r.addEventListener("change", requestPreview);
+    r.addEventListener("change", function () {
+      userOverrides.color_mode = true;
+      requestPreview();
+    });
   });
 
   // App mode toggle: show/hide guide overlays
@@ -250,65 +347,7 @@
       });
   });
 
-  // --- AI Assist (local-only) ---
+  // --- Init ---
+  loadPresets();
 
-  if (isLocalhost && aiSection) {
-    aiSection.style.display = "flex";
-  } else if (aiSection) {
-    console.log("AI disabled: not running on localhost");
-  }
-
-  if (aiBtn) {
-    aiBtn.addEventListener("click", function () {
-      if (!imageId) return;
-      aiBtn.disabled = true;
-      aiBtn.textContent = "Analyzing...";
-      aiBtn.classList.add("ai-loading");
-      aiResults.style.display = "none";
-
-      var params = getParams();
-      var body = {
-        image_id: imageId,
-        values: params.values,
-        build_level: params.build_level,
-        mode: params.mode,
-        edge_strength: params.edge_strength,
-        style_mode: params.style_mode,
-      };
-
-      fetch("/api/ai-analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      })
-        .then(function (res) {
-          if (!res.ok) return res.json().then(function (err) { throw new Error(err.detail || "AI analysis failed"); });
-          return res.json();
-        })
-        .then(function (data) {
-          if (data.error) {
-            throw new Error(data.error);
-          }
-          document.getElementById("ai-focal").textContent = data.focal || "—";
-          document.getElementById("ai-values").textContent = data.values || "—";
-          document.getElementById("ai-edges").textContent = data.edges || "—";
-          document.getElementById("ai-simplification").textContent = data.simplification || "—";
-          document.getElementById("ai-color").textContent = data.color || "—";
-          aiResults.style.display = "block";
-        })
-        .catch(function (e) {
-          document.getElementById("ai-focal").textContent = e.message;
-          document.getElementById("ai-values").textContent = "";
-          document.getElementById("ai-edges").textContent = "";
-          document.getElementById("ai-simplification").textContent = "";
-          document.getElementById("ai-color").textContent = "";
-          aiResults.style.display = "block";
-        })
-        .finally(function () {
-          aiBtn.disabled = false;
-          aiBtn.textContent = "AI Assist";
-          aiBtn.classList.remove("ai-loading");
-        });
-    });
-  }
 })();

@@ -82,11 +82,11 @@ class LRUCache:
     @staticmethod
     def make_key(image_id: str, values: int, build_level: int,
                  mode: str, edge_strength: int, max_side: int,
-                 style_mode: str, preserve_subject: bool,
+                 preset: str, preserve_subject: bool,
                  guide_mode: bool, overlay_edges: bool,
                  overlay_shapes: bool, overlay_focal: bool) -> str:
         return (f"{image_id}:{values}:{build_level}:{mode}:{edge_strength}:"
-                f"{max_side}:{style_mode}:{preserve_subject}:"
+                f"{max_side}:{preset}:{preserve_subject}:"
                 f"{guide_mode}:{overlay_edges}:{overlay_shapes}:{overlay_focal}")
 
     def get(self, key: str) -> bytes | None:

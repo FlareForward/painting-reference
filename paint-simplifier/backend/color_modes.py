@@ -47,24 +47,38 @@ def _snap_gray(out: np.ndarray, steps: np.ndarray) -> np.ndarray:
 
 
 def _snap_bgr(blurred: np.ndarray, flat: np.ndarray) -> np.ndarray:
-    """Snap blurred BGR pixels back to nearest color from the flat palette."""
+    """Snap blurred BGR pixels back to nearest palette color using LAB distance.
+
+    Uses LAB color space with luminance-weighted distance to preserve
+    value hierarchy — prevents dark regions from snapping to bright colors
+    after edge blur.
+    """
     h, w = blurred.shape[:2]
     flat_2d = flat.reshape(-1, 3)
-    palette = np.unique(flat_2d, axis=0).astype(np.int16)
+    palette_bgr = np.unique(flat_2d, axis=0)
 
-    out_2d = blurred.reshape(-1, 3).astype(np.int16)
+    # Convert palette to LAB for perceptual distance
+    # int32 required: LAB diffs up to 255, squared = 65025, overflows int16
+    palette_lab = cv2.cvtColor(
+        palette_bgr.reshape(1, -1, 3), cv2.COLOR_BGR2LAB
+    ).reshape(-1, 3).astype(np.int32)
+
+    # Convert blurred image to LAB
+    blurred_lab = cv2.cvtColor(blurred, cv2.COLOR_BGR2LAB)
+    out_2d = blurred_lab.reshape(-1, 3).astype(np.int32)
+
     result = np.empty((h * w, 3), dtype=np.uint8)
 
     batch = 100000
     for start in range(0, len(out_2d), batch):
         end = min(start + batch, len(out_2d))
         chunk = out_2d[start:end]
-        dists = np.sum(
-            (chunk[:, np.newaxis, :] - palette[np.newaxis, :, :]) ** 2,
-            axis=2,
-        )
+        diff = chunk[:, np.newaxis, :] - palette_lab[np.newaxis, :, :]
+        # Weight L channel 2x (4x in squared distance) — value-first priority.
+        # Prevents blur artifacts from crossing value boundaries.
+        dists = 4 * diff[:, :, 0] ** 2 + diff[:, :, 1] ** 2 + diff[:, :, 2] ** 2
         nearest = np.argmin(dists, axis=1)
-        result[start:end] = palette[nearest].astype(np.uint8)
+        result[start:end] = palette_bgr[nearest]
 
     return result.reshape(h, w, 3)
 
@@ -112,11 +126,9 @@ def _render_color_painter(labels: np.ndarray, num_values: int,
                           exaggerate: bool = False) -> np.ndarray:
     """Painter strategy: 2-3 colors per value group, preserving warm/cool.
 
-    Inside each value group:
-    - k-means (k=3) on LAB color
-    - remove micro clusters
-    - preserve warm/cool temperature variation
-    - max 3 colors per value group
+    Sub-clusters on A/B channels only (chrominance) — luminance is locked
+    to each value group's median L. This ensures value hierarchy is
+    preserved and prevents dark colors from drifting toward white.
 
     If exaggerate=True, slightly push A/B channels apart for livelier color.
     """
@@ -124,8 +136,7 @@ def _render_color_painter(labels: np.ndarray, num_values: int,
     original_lab = cv2.cvtColor(original_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
     out_lab = np.zeros((h, w, 3), dtype=np.float32)
 
-    total_pixels = h * w
-    # Minimum cluster size: 0.5% of value group area
+    # Minimum cluster size: 5% of value group area
     min_cluster_frac = 0.05
 
     for v in range(num_values):
@@ -136,19 +147,29 @@ def _render_color_painter(labels: np.ndarray, num_values: int,
         if n_pixels == 0:
             continue
 
+        # Lock luminance to value group's median L — this is the core fix.
+        # All structure comes from value grouping; color is decoration only.
+        group_L = float(np.median(group_pixels[:, 0]))
+
         if n_pixels < 50:
-            # Too few pixels, just use median
-            out_lab[group_mask] = np.median(group_pixels, axis=0)
+            median_ab = np.median(group_pixels[:, 1:3], axis=0)
+            out_lab[group_mask] = [group_L, median_ab[0], median_ab[1]]
             continue
 
-        # Cluster this value group into up to 3 sub-colors
+        # Sub-cluster on A/B channels only (chrominance).
+        # This preserves warm/cool variation without disturbing luminance.
         k = min(3, max(1, n_pixels // 30))
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
-        samples = group_pixels.astype(np.float32)
-        _, sub_labels, centers = cv2.kmeans(
-            samples, k, None, criteria, 3, cv2.KMEANS_PP_CENTERS
+        ab_samples = group_pixels[:, 1:3].copy().astype(np.float32)
+        _, sub_labels, ab_centers = cv2.kmeans(
+            ab_samples, k, None, criteria, 3, cv2.KMEANS_PP_CENTERS
         )
         sub_labels = sub_labels.flatten()
+
+        # Build full LAB centers with locked L
+        centers = np.zeros((k, 3), dtype=np.float32)
+        centers[:, 0] = group_L
+        centers[:, 1:3] = ab_centers
 
         # Remove micro clusters: reassign to nearest surviving cluster
         min_size = max(10, int(n_pixels * min_cluster_frac))
@@ -162,14 +183,14 @@ def _render_color_painter(labels: np.ndarray, num_values: int,
 
         # Reassign dead clusters to nearest surviving
         if len(surviving) < k:
-            surviving_centers = centers[surviving]
+            surviving_ab = ab_centers[surviving]
             for c in range(k):
                 if c not in surviving:
-                    dists = np.sum((surviving_centers - centers[c]) ** 2, axis=1)
+                    dists = np.sum((surviving_ab - ab_centers[c]) ** 2, axis=1)
                     nearest = surviving[np.argmin(dists)]
                     sub_labels[sub_labels == c] = nearest
 
-        # Optionally exaggerate: push A and B channels away from group mean
+        # Optionally exaggerate: push A and B channels apart
         if exaggerate and len(surviving) > 1:
             group_mean_ab = np.mean(group_pixels[:, 1:3], axis=0)
             for c in surviving:

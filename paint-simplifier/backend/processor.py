@@ -1,18 +1,22 @@
-"""Core processing pipeline with Shape Build Level system.
+"""Core processing pipeline with Master Painter Presets.
+
+Each preset controls the entire render engine:
+  - Pre-filtering (median, bilateral)
+  - Value grouping (k-means on LAB luminance)
+  - Shape construction (build levels + merge tolerance)
+  - Boundary cleanup (edge softness)
+  - Color rendering (strategy + exaggeration)
 
 Shape Build Levels (4 levels):
   Level 1 — BLOCK:      Bold masses only
   Level 2 — SECONDARY:  Large structural shapes (default)
   Level 3 — STRUCTURE:  Medium shapes + form turns
   Level 4 — FULL:       All simplified shapes
-
-Style Modes control the entire processing pipeline:
-  Painter — soft mass grouping, harmonic color families, atmospheric
-  Graphic — hard separation, bold shapes, poster-like clarity
 """
 
 import cv2
 import numpy as np
+from .presets import get_preset_config
 from .color_modes import render_grayscale, render_color_snap
 from .guide import (
     compute_edge_hierarchy, compute_major_shapes, compute_focal_hint,
@@ -28,49 +32,6 @@ LEVEL_MIN_AREA_FRACTION = {
     2: 0.02,    # large structural shapes
     3: 0.007,   # medium shapes + form turns
     4: 0.002,   # all simplified shapes
-}
-
-# Style mode configurations — two distinct processing engines.
-STYLE_CONFIGS = {
-    "painter": {
-        # Pre-filtering: no median, moderate bilateral for soft mass grouping
-        # sigmaColor kept moderate to preserve dark/light value separation
-        "pre_median_ksize": 0,
-        "bilateral_d": 11,
-        "bilateral_sigma_color": 40,
-        "bilateral_sigma_space": 75,
-        "bilateral_d_high": 9,
-        "bilateral_sigma_color_high": 30,
-        "bilateral_sigma_space_high": 55,
-        "bilateral_always": True,
-        # Shape construction: slightly smaller min area so organic shapes survive
-        "min_area_multiplier": 0.85,
-        # Boundary cleanup
-        "morph_kernel_size": 5,
-        # Edge rendering: softer blur
-        "edge_sigma_scale": 4.0,
-        # Color: sub-clustering with exaggeration always on
-        "color_exaggerate": True,
-    },
-    "graphic": {
-        # Pre-filtering: aggressive median blur for poster-like flattening
-        "pre_median_ksize": 13,
-        "bilateral_d": 5,
-        "bilateral_sigma_color": 20,
-        "bilateral_sigma_space": 20,
-        "bilateral_d_high": 0,
-        "bilateral_sigma_color_high": 0,
-        "bilateral_sigma_space_high": 0,
-        "bilateral_always": False,
-        # Shape construction: much larger min area for bold shapes
-        "min_area_multiplier": 2.5,
-        # Boundary cleanup
-        "morph_kernel_size": 9,
-        # Edge rendering: sharper
-        "edge_sigma_scale": 1.5,
-        # Color: single flat median, no sub-clustering
-        "color_exaggerate": False,
-    },
 }
 
 
@@ -191,40 +152,54 @@ def smooth_boundaries(labels: np.ndarray, edge_strength: int,
 def build_shapes(labels: np.ndarray, num_values: int,
                  build_level: int, total_pixels: int,
                  area_multiplier: float = 1.0,
-                 protected_label: int = -1) -> np.ndarray:
-    """Shape construction by build level, scaled by style mode.
+                 protected_label: int = -1,
+                 allow_micro_values: bool = False) -> np.ndarray:
+    """Shape construction by build level, scaled by preset config.
 
-    Two passes of region removal for stability.
-    Preserves major silhouettes by never dissolving large masses.
+    Two passes of region removal for stability (unless allow_micro_values
+    is True, in which case only one pass — preserving small color fragments
+    for impressionist-style broken color).
     """
     fraction = LEVEL_MIN_AREA_FRACTION.get(build_level, 0.012)
     min_area = max(10, int(total_pixels * fraction * area_multiplier))
 
     result = remove_small_regions(labels, num_values, min_area, protected_label)
-    remaining = len(np.unique(result))
-    result = remove_small_regions(result, remaining, min_area, protected_label)
+
+    if not allow_micro_values:
+        remaining = len(np.unique(result))
+        result = remove_small_regions(result, remaining, min_area, protected_label)
 
     return result
 
 
+def apply_contrast_boost(rendered: np.ndarray, boost: float) -> np.ndarray:
+    """Apply contrast boost around the mean. >1.0 increases contrast."""
+    if abs(boost - 1.0) < 0.01:
+        return rendered
+    img_f = rendered.astype(np.float32)
+    mean = img_f.mean()
+    img_f = mean + (img_f - mean) * boost
+    return np.clip(img_f, 0, 255).astype(np.uint8)
+
+
 def process_image(image_bgr: np.ndarray, values: int, build_level: int,
                   mode: str, edge_strength: int, target_max_side: int,
-                  style_mode: str = "painter",
+                  preset: str = "sargent",
                   preserve_subject: bool = False,
                   guide_mode: bool = False,
                   overlay_edges: bool = False,
                   overlay_shapes: bool = False,
                   overlay_focal: bool = False) -> bytes:
-    """Full pipeline.
+    """Full pipeline driven by preset engine config.
 
     Args:
         image_bgr: Input BGR image.
-        values: Number of value groups (2..10).
-        build_level: Shape construction level (1..4).
-        mode: 'grayscale' or 'color'.
-        edge_strength: 0 (soft) to 100 (graphic).
+        values: Number of value groups (2..10) — slider override.
+        build_level: Shape construction level (1..4) — slider override.
+        mode: 'grayscale' or 'color' — slider override.
+        edge_strength: 0 (soft) to 100 (graphic) — slider override.
         target_max_side: Max dimension for processing.
-        style_mode: 'painter' or 'graphic' — selects processing engine.
+        preset: Preset name — controls engine internals.
         preserve_subject: Protect dominant subject from being merged.
         guide_mode: Enable guide overlays.
         overlay_edges/shapes/focal: Individual overlay toggles.
@@ -232,7 +207,7 @@ def process_image(image_bgr: np.ndarray, values: int, build_level: int,
     Returns:
         PNG bytes.
     """
-    cfg = STYLE_CONFIGS[style_mode]
+    cfg = get_preset_config(preset)
 
     # A) Preprocess — value-first pipeline
     # NO CLAHE: it distorts global value relationships, causing dark
@@ -242,14 +217,14 @@ def process_image(image_bgr: np.ndarray, values: int, build_level: int,
     l_channel = lab[:, :, 0]
     l_norm = l_channel.copy()
 
-    # Aggressive median pre-filter (Graphic: poster-like flattening)
+    # Aggressive median pre-filter (Graphic Poster: poster-like flattening)
     pre_median = cfg.get("pre_median_ksize", 0)
     if pre_median > 0:
         l_norm = cv2.medianBlur(l_norm, pre_median)
 
     # Bilateral pre-filter with split sigma:
-    #   sigmaColor: moderate — preserves dark/light value separation
-    #   sigmaSpace: can be larger — controls spatial softness of shapes
+    #   sigmaColor: controls value separation preservation
+    #   sigmaSpace: controls spatial softness of shapes
     apply_bilateral = cfg["bilateral_always"] or build_level <= 3
     if apply_bilateral:
         if build_level <= 3:
@@ -276,24 +251,36 @@ def process_image(image_bgr: np.ndarray, values: int, build_level: int,
     h, w = labels.shape
     labels = build_shapes(labels, values, build_level, h * w,
                           area_multiplier=cfg["min_area_multiplier"],
-                          protected_label=protected_label)
+                          protected_label=protected_label,
+                          allow_micro_values=cfg.get("allow_micro_values", False))
 
     # D) Boundary cleanup (unbiased median filter)
     labels = smooth_boundaries(labels, edge_strength,
                                kernel_size=cfg["morph_kernel_size"])
 
+    # D2) Micro-fragment cleanup: median filter can create new tiny regions.
+    #     Merge anything under 0.05% of canvas into its neighbor.
+    micro_threshold = max(5, int(h * w * 0.0005))
+    remaining = len(np.unique(labels))
+    labels = remove_small_regions(labels, remaining, micro_threshold)
+
     # E) Render
     sigma_scale = cfg["edge_sigma_scale"]
+    color_strategy = cfg.get("color_strategy", "painter")
+
     if mode == "grayscale":
         rendered = render_grayscale(labels, values, edge_strength,
                                     sigma_scale=sigma_scale)
     elif mode == "color":
         rendered = render_color_snap(labels, values, img, edge_strength,
-                                     style_mode=style_mode,
+                                     style_mode=color_strategy,
                                      sigma_scale=sigma_scale,
                                      exaggerate=cfg["color_exaggerate"])
     else:
         raise ValueError(f"Unknown mode: {mode}")
+
+    # Contrast boost (Graphic Poster pushes darks/lights apart)
+    rendered = apply_contrast_boost(rendered, cfg.get("contrast_boost", 1.0))
 
     # F) Guide overlays (focal first, shapes, edges last on top)
     if guide_mode:
