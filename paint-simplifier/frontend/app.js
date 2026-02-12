@@ -130,7 +130,11 @@
         return res.blob();
       })
       .then(function (blob) {
-        resultPreview.src = URL.createObjectURL(blob);
+        resultPreview.style.opacity = "0";
+        setTimeout(function () {
+          resultPreview.src = URL.createObjectURL(blob);
+          resultPreview.style.opacity = "1";
+        }, 80);
         resultLabel.textContent = modeStr;
       })
       .catch(function (e) {
