@@ -105,5 +105,20 @@ class LRUCache:
                     self._cache.popitem(last=False)
                 self._cache[key] = data
 
+    def clear(self):
+        with self._lock:
+            self._cache.clear()
+
 
 preview_cache = LRUCache(20)
+
+
+def cleanup_uploads(keep_id: str | None = None):
+    """Delete all upload files except the one currently in use."""
+    for f in UPLOADS_DIR.glob("*.png"):
+        if keep_id and f.stem == keep_id:
+            continue
+        try:
+            f.unlink()
+        except OSError:
+            pass

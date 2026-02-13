@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .utils import (
     ensure_dirs, generate_image_id, save_upload, load_image,
-    preview_cache, LRUCache,
+    preview_cache, LRUCache, cleanup_uploads,
     MAX_UPLOAD_BYTES, PREVIEW_MAX_SIDE, EXPORT_MAX_SIDE,
 )
 from .processor import process_image
@@ -72,6 +72,10 @@ async def upload_image(file: UploadFile):
         save_upload(data, image_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+    # Free memory: clear cached previews and delete previous upload files
+    preview_cache.clear()
+    cleanup_uploads(keep_id=image_id)
 
     img = load_image(image_id)
     h, w = img.shape[:2]
