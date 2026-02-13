@@ -1,4 +1,4 @@
-"""FastAPI server: serve frontend + API routes for paint simplifier.
+"""FastAPI server: serve frontend + API routes for Block-In Studio.
 
 Fully local, deterministic rendering — no external API calls.
 """
@@ -22,7 +22,7 @@ from .presets import get_presets_info, VALID_PRESETS
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Paint Simplifier")
+app = FastAPI(title="Block-In Studio")
 PORT = int(os.environ.get("PORT", 589))
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
@@ -138,7 +138,7 @@ async def export_image(req: ProcessRequest):
     return Response(
         content=png_bytes,
         media_type="image/png",
-        headers={"Content-Disposition": "attachment; filename=paint_simplifier_export.png"}
+        headers={"Content-Disposition": "attachment; filename=block_in_studio_export.png"}
     )
 
 

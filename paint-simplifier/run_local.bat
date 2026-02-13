@@ -1,8 +1,8 @@
 @echo off
-title Paint Simplifier
+title Block-In Studio
 cd /d "%~dp0"
 
-echo === Paint Simplifier ===
+echo === Block-In Studio ===
 echo.
 
 :: Create venv if missing

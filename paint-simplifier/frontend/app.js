@@ -332,7 +332,7 @@
         var url = URL.createObjectURL(blob);
         var a = document.createElement("a");
         a.href = url;
-        a.download = "paint_simplifier_export.png";
+        a.download = "block_in_studio_export.png";
         document.body.appendChild(a);
         a.click();
         a.remove();

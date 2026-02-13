@@ -1,4 +1,4 @@
-# Paint Simplifier
+# Block-In Studio
 
 A local-first web app that turns photos into paintable block-in studies with limited values, big readable shapes, and aggressive detail removal.
 
@@ -6,18 +6,18 @@ Built for painters who want a starting reference — not a finished painting.
 
 ## Features
 
+- **Master Painter Presets:** Sargent (bold block-in), Impressionist (broken color), Graphic Poster (flat shapes)
 - **Value grouping (2–10):** Smart k-means clustering on luminance, not even math steps
-- **Abstraction slider:** Aggressively removes small shapes and merges regions
-- **Modes:** B/W (flat notan), Grayscale, Simplified Color (snapped to value groups)
-- **Edges:** Hard (graphic) or Soft (painterly blur)
-- **Side-by-side B/W comparison** for shape assessment before color
+- **Shape Build Level:** From bold block-in to full structure detail
+- **Modes:** Grayscale for value planning, Color for color masses
+- **Edges:** Soft (painterly) to Graphic (hard) edge control
 - **PNG export** at full resolution
 
 ## Quick start
 
 1. Double-click **run_local.bat**
 2. Browser opens to `http://127.0.0.1:589`
-3. Upload a photo, adjust sliders, export PNG
+3. Upload a photo, pick a preset, adjust sliders, export PNG
 
 ### Requirements
 
@@ -45,7 +45,9 @@ paint-simplifier/
 ├── backend/
 │   ├── main.py           # FastAPI server + API routes
 │   ├── processor.py      # Image processing pipeline
-│   ├── color_modes.py    # B/W, Grayscale, Color renderers
+│   ├── presets.py         # Master painter preset definitions
+│   ├── color_modes.py    # Grayscale & Color renderers
+│   ├── guide.py          # Guide overlay system
 │   ├── utils.py          # IO, resize, caching
 │   └── requirements.txt
 ├── frontend/
@@ -61,7 +63,7 @@ paint-simplifier/
 
 - **Economy:** Drop unnecessary micro-detail; keep only what describes form
 - **Notan / limited values:** Fewer values = clearer foundational shapes
-- **B/W first:** Assess shape and composition before introducing color
+- **Grayscale first:** Assess shape and composition before introducing color
 - **Structured color:** When used, color is simplified and snapped to value groups
 
 ## Deployment
